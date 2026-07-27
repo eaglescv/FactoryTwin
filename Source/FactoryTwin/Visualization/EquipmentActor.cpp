@@ -27,14 +27,14 @@ AEquipmentActor::AEquipmentActor()
 
 	StatusLightComponent = CreateDefaultSubobject<UPointLightComponent>(TEXT("StatusLightComponent"));
 	StatusLightComponent->SetupAttachment(BodyMeshComponent);
-	StatusLightComponent->SetRelativeLocation(FVector(0.0f, 0.0f, 150.0f));
+	StatusLightComponent->SetRelativeLocation(FVector(0.0f, 0.0f, 100.0f));
 	StatusLightComponent->SetIntensity(5000.0f);
 	StatusLightComponent->SetLightColor(FLinearColor::Gray);
 	StatusLightComponent->SetAttenuationRadius(400.0f);
 
 	StatusTextComponent = CreateDefaultSubobject<UTextRenderComponent>(TEXT("StatusTextComponent"));
 	StatusTextComponent->SetupAttachment(BodyMeshComponent);
-	StatusTextComponent->SetRelativeLocation(FVector(0.0f, 0.0f, 240.0f));
+	StatusTextComponent->SetRelativeLocation(FVector(0.0f, 0.0f, 140.0f));
 	StatusTextComponent->SetRelativeRotation(FRotator(0.0f, 180.0f, 0.0f));
 	StatusTextComponent->SetHorizontalAlignment(EHTA_Center);
 	StatusTextComponent->SetWorldSize(32.0f);
@@ -43,7 +43,7 @@ AEquipmentActor::AEquipmentActor()
 	// Separate component so pressure's text never inherits the temperature-driven status color.
 	PressureTextComponent = CreateDefaultSubobject<UTextRenderComponent>(TEXT("PressureTextComponent"));
 	PressureTextComponent->SetupAttachment(BodyMeshComponent);
-	PressureTextComponent->SetRelativeLocation(FVector(0.0f, 0.0f, 190.0f));
+	PressureTextComponent->SetRelativeLocation(FVector(0.0f, 0.0f, 100.0f));
 	PressureTextComponent->SetRelativeRotation(FRotator(0.0f, 180.0f, 0.0f));
 	PressureTextComponent->SetHorizontalAlignment(EHTA_Center);
 	PressureTextComponent->SetWorldSize(32.0f);
