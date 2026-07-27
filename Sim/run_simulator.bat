@@ -3,7 +3,7 @@ cd /d "%~dp0"
 
 where python >nul 2>nul
 if errorlevel 1 (
-    echo [ERROR] python 명령을 찾을 수 없습니다. Python 설치와 PATH 설정을 확인하세요.
+    echo [ERROR] "python" was not found. Check your Python install and PATH.
     pause
     exit /b 1
 )
