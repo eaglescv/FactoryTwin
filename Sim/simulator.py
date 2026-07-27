@@ -13,6 +13,7 @@ Stop with Ctrl+C.
 
 import asyncio
 import json
+import os
 import random
 from datetime import datetime, timezone
 
@@ -22,6 +23,13 @@ HOST = "127.0.0.1"
 PORT = 8765
 
 EQUIPMENT_ID = "EQ-01"
+
+# Set FACTORYTWIN_SIM_FAST=1 to push much faster and cross thresholds much more
+# often, for quickly eyeballing color/UI transitions instead of waiting on the
+# normal ~1-2 updates/sec cadence.
+FAST_MODE = os.environ.get("FACTORYTWIN_SIM_FAST", "0") == "1"
+TICK_INTERVAL_RANGE = (0.1, 0.2) if FAST_MODE else (0.5, 1.0)
+KICK_PROBABILITY = 0.35 if FAST_MODE else 0.05
 
 # baseline: steady-state value the random walk drifts around
 # step: max per-tick drift under normal conditions
@@ -38,7 +46,7 @@ def next_value(state: dict) -> float:
     drift = random.uniform(-state["step"], state["step"])
 
     # occasionally kick the walk hard so the threshold gets exercised
-    if random.random() < 0.05:
+    if random.random() < KICK_PROBABILITY:
         drift += state["step"] * random.uniform(3, 6) * random.choice([1, -1])
 
     state["value"] = max(state["min"], min(state["max"], state["value"] + drift))
@@ -85,12 +93,12 @@ async def broadcast_loop():
             flag = " !! THRESHOLD" if value >= state["threshold"] else ""
             print(f"{EQUIPMENT_ID}/{sensor_key} = {value:.2f}{flag}")
 
-        # ~1-2 updates/sec per sensor
-        await asyncio.sleep(random.uniform(0.5, 1.0))
+        await asyncio.sleep(random.uniform(*TICK_INTERVAL_RANGE))
 
 
 async def main():
-    print(f"FactoryTwin simulator listening on ws://{HOST}:{PORT}")
+    mode_note = " (FAST MODE)" if FAST_MODE else ""
+    print(f"FactoryTwin simulator listening on ws://{HOST}:{PORT}{mode_note}")
     async with websockets.serve(handler, HOST, PORT):
         await broadcast_loop()
 

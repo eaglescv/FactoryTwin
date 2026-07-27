@@ -32,13 +32,23 @@ AEquipmentActor::AEquipmentActor()
 	StatusLightComponent->SetLightColor(FLinearColor::Gray);
 	StatusLightComponent->SetAttenuationRadius(400.0f);
 
-	ReadoutTextComponent = CreateDefaultSubobject<UTextRenderComponent>(TEXT("ReadoutTextComponent"));
-	ReadoutTextComponent->SetupAttachment(BodyMeshComponent);
-	ReadoutTextComponent->SetRelativeLocation(FVector(0.0f, 0.0f, 220.0f));
-	ReadoutTextComponent->SetRelativeRotation(FRotator(0.0f, 180.0f, 0.0f));
-	ReadoutTextComponent->SetHorizontalAlignment(EHTA_Center);
-	ReadoutTextComponent->SetWorldSize(32.0f);
-	ReadoutTextComponent->SetText(FText::FromString(TEXT("--")));
+	StatusTextComponent = CreateDefaultSubobject<UTextRenderComponent>(TEXT("StatusTextComponent"));
+	StatusTextComponent->SetupAttachment(BodyMeshComponent);
+	StatusTextComponent->SetRelativeLocation(FVector(0.0f, 0.0f, 240.0f));
+	StatusTextComponent->SetRelativeRotation(FRotator(0.0f, 180.0f, 0.0f));
+	StatusTextComponent->SetHorizontalAlignment(EHTA_Center);
+	StatusTextComponent->SetWorldSize(32.0f);
+	StatusTextComponent->SetText(FText::FromString(TEXT("--")));
+
+	// Separate component so pressure's text never inherits the temperature-driven status color.
+	PressureTextComponent = CreateDefaultSubobject<UTextRenderComponent>(TEXT("PressureTextComponent"));
+	PressureTextComponent->SetupAttachment(BodyMeshComponent);
+	PressureTextComponent->SetRelativeLocation(FVector(0.0f, 0.0f, 190.0f));
+	PressureTextComponent->SetRelativeRotation(FRotator(0.0f, 180.0f, 0.0f));
+	PressureTextComponent->SetHorizontalAlignment(EHTA_Center);
+	PressureTextComponent->SetWorldSize(32.0f);
+	PressureTextComponent->SetTextRenderColor(FColor::White);
+	PressureTextComponent->SetText(FText::FromString(TEXT("Press: --")));
 }
 
 void AEquipmentActor::BeginPlay()
@@ -112,14 +122,17 @@ void AEquipmentActor::RefreshVisuals()
 		}
 	}
 	StatusLightComponent->SetLightColor(StatusColor);
+	StatusTextComponent->SetTextRenderColor(StatusColor.ToFColor(true));
 
 	const FString TemperatureText = LatestTemperature.IsSet()
 		? FString::Printf(TEXT("%.1f"), LatestTemperature.GetValue())
 		: TEXT("--");
+	StatusTextComponent->SetText(FText::FromString(FString::Printf(
+		TEXT("%s\nTemp: %s"), *EquipmentId.ToString(), *TemperatureText)));
+
+	// Pressure stays neutral white regardless of status — it's informational only.
 	const FString PressureText = LatestPressure.IsSet()
 		? FString::Printf(TEXT("%.1f"), LatestPressure.GetValue())
 		: TEXT("--");
-
-	ReadoutTextComponent->SetText(FText::FromString(FString::Printf(
-		TEXT("%s\nTemp: %s\nPress: %s"), *EquipmentId.ToString(), *TemperatureText, *PressureText)));
+	PressureTextComponent->SetText(FText::FromString(FString::Printf(TEXT("Press: %s"), *PressureText)));
 }

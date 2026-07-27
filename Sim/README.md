@@ -42,13 +42,28 @@ EQ-01/temperature = 86.10 !! THRESHOLD
 
 Stop with `Ctrl+C`.
 
+### Fast mode (for quickly eyeballing UI/color transitions)
+
+Set `FACTORYTWIN_SIM_FAST=1` to push every ~0.1-0.2s and cross thresholds
+much more often (35% of ticks instead of 5%), instead of waiting on the
+normal cadence:
+
+```powershell
+$env:FACTORYTWIN_SIM_FAST="1"; python simulator.py
+```
+
+```bash
+FACTORYTWIN_SIM_FAST=1 python simulator.py   # macOS/Linux
+```
+
 ## Behavior
 
 - Each sensor value does a bounded random walk around its baseline (~1-2
-  updates/sec per sensor).
+  updates/sec per sensor; much faster in fast mode, see above).
 - About 5% of ticks apply a larger kick so the value occasionally crosses
   its threshold (`temperature` >= 85, `pressure` >= 45) — useful for
-  eyeballing that alerting logic downstream actually fires.
+  eyeballing that alerting logic downstream actually fires. Fast mode raises
+  this to 35%.
 - Values are clamped to a sane min/max so the walk can't run away.
 - The server accepts multiple simultaneous clients (e.g. UE PIE + a debug
   client) and broadcasts the same stream to all of them.

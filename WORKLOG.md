@@ -50,3 +50,25 @@
 - **PIE 최종 검증**: 시뮬레이터 콘솔 값(`EQ-01/temperature = 69.86` 등)과 3D 화면의 상태등 색상·텍스트(`Temp: 69.9`)를 직접 비교해서 실시간 반영되는지, 임계값 미만일 때 초록 상태등이 맞는지 육안 확인
 
 ---
+
+## 2026-07-27 — UI 위젯 실시간 표시 슬라이스
+
+**목표**: 화면 한쪽에 UMG HUD로 설비 센서 값(온도/압력)을 실시간 텍스트로 표시. 3D 공간 텍스트와 별개로 화면 고정 UI 추가.
+
+### Claude 작업
+- `FactoryTwin.Build.cs`에 `UMG`(Public), `Slate`/`SlateCore`(Private) 의존성 추가
+- `USensorHudWidget` 작성 (`UI/SensorHudWidget.h/.cpp`)
+  - Widget Blueprint 에셋을 에디터에서 만드는 대신, `NativeConstruct()`에서 `WidgetTree->ConstructWidget<>()`로 CanvasPanel + VerticalBox + TextBlock 3줄(제목/Temp/Press)을 전부 코드로 생성 — 에디터 UMG 디자이너 작업 없이 완전히 코드/버전관리로 재현 가능
+  - `USensorSubsystem::OnSensorDataReceived()` 구독, `AEquipmentActor`와 동일한 임계값 로직(85=경고/호박색, 100=위험/빨강)으로 텍스트 색상 전환
+- `UFactoryTwinWorldSubsystem::OnWorldBeginPlay`에 `CreateWidget<USensorHudWidget>` + `AddToViewport()` 추가 (데디케이티드 서버 넷모드는 스킵) — PIE 시작하면 액터 스폰과 함께 HUD도 자동으로 뜨도록 통합
+- 빌드 검증 완료 (UBT 컴파일 성공)
+- `Sim/simulator.py`에 `FACTORYTWIN_SIM_FAST` 환경변수 기반 fast mode 추가 (업데이트 주기 0.5~1.0초→0.1~0.2초, 임계값 초과 확률 5%→35%) — 검증 속도를 위해 기본 동작은 안 건드리고 옵션으로 분리
+- **`AEquipmentActor` 텍스트 색상 버그 수정 (1차)**: `RefreshVisuals()`가 계산한 `StatusColor`를 상태등(`StatusLightComponent`)에만 적용하고 3D 텍스트(`ReadoutTextComponent`)에는 한 번도 적용 안 하고 있던 걸 발견 → `SetTextRenderColor(StatusColor.ToFColor(true))` 호출 추가해서 텍스트도 온도에 따라 색이 바뀌도록 수정
+- **`AEquipmentActor` 텍스트 컴포넌트 분리 (2차)**: 1차 수정 후에도 Press 줄이 Temp와 같은 색으로 바뀌는 문제 확인. 원인은 제목+Temp+Press가 `UTextRenderComponent` 하나에 합쳐진 텍스트라 색상이 통째로 적용되는 구조였던 것 (HUD는 줄마다 별도 위젯이라 원래 문제없었음). `StatusTextComponent`(제목+Temp, 색 변함)와 `PressureTextComponent`(Press, 항상 흰색)로 컴포넌트 자체를 분리해서 해결
+
+### 본인 작업 (트러블슈팅 포함)
+- **fast mode 요청**: 값 변화를 매번 오래 기다려서 검증하는 게 비효율적이라 판단, 빈도수를 올려서 빨리 검증하자고 먼저 제안
+- **텍스트 색상 버그 발견**: fast mode로 값이 100을 빠르게 넘나드는 걸 보다가, 텍스트 색이 전혀 안 바뀌는 걸 알아채고 버그로 보고 → 실제로 `ReadoutTextComponent` 색상 갱신 누락 확인, 수정으로 이어짐
+- **설계 의도 재확인 질문**: temp/press가 같은 색으로 처리되는 게 어색해서 의도인지 재차 질문 → "press는 색상 미반영이 의도"라는 답을 듣고, 그럼 지금 Press도 같이 색이 바뀌는 건 의도와 모순 아니냐고 정확히 짚어냄 → 2차 버그(텍스트 컴포넌트 미분리) 발견으로 이어짐
+
+---

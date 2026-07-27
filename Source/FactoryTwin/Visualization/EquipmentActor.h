@@ -49,8 +49,13 @@ private:
 	UPROPERTY(VisibleAnywhere, Category = "FactoryTwin")
 	TObjectPtr<UPointLightComponent> StatusLightComponent;
 
+	// Title + Temp: colored by StatusColor (temperature drives overall equipment status).
 	UPROPERTY(VisibleAnywhere, Category = "FactoryTwin")
-	TObjectPtr<UTextRenderComponent> ReadoutTextComponent;
+	TObjectPtr<UTextRenderComponent> StatusTextComponent;
+
+	// Press: always neutral white — pressure is informational only, doesn't affect status color.
+	UPROPERTY(VisibleAnywhere, Category = "FactoryTwin")
+	TObjectPtr<UTextRenderComponent> PressureTextComponent;
 
 	TOptional<float> LatestTemperature;
 	TOptional<float> LatestPressure;

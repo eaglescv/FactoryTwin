@@ -2,7 +2,9 @@
 
 #include "FactoryTwinWorldSubsystem.h"
 
+#include "Blueprint/UserWidget.h"
 #include "Engine/World.h"
+#include "UI/SensorHudWidget.h"
 #include "Visualization/EquipmentActor.h"
 
 void UFactoryTwinWorldSubsystem::OnWorldBeginPlay(UWorld& InWorld)
@@ -18,6 +20,16 @@ void UFactoryTwinWorldSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 	{
 		Equipment->EquipmentId = TEXT("EQ-01");
 		Equipment->FinishSpawning(FTransform(FVector::ZeroVector));
+	}
+
+	// No dedicated-server rendering, so skip HUD setup there.
+	if (InWorld.GetNetMode() != NM_DedicatedServer)
+	{
+		if (USensorHudWidget* Hud = CreateWidget<USensorHudWidget>(&InWorld, USensorHudWidget::StaticClass()))
+		{
+			Hud->EquipmentId = TEXT("EQ-01");
+			Hud->AddToViewport();
+		}
 	}
 }
 
