@@ -72,3 +72,20 @@
 - **설계 의도 재확인 질문**: temp/press가 같은 색으로 처리되는 게 어색해서 의도인지 재차 질문 → "press는 색상 미반영이 의도"라는 답을 듣고, 그럼 지금 Press도 같이 색이 바뀌는 건 의도와 모순 아니냐고 정확히 짚어냄 → 2차 버그(텍스트 컴포넌트 미분리) 발견으로 이어짐
 
 ---
+
+## 2026-07-27 — 임계값 알람/이벤트 처리 슬라이스
+
+**목표**: 값이 threshold를 넘으면 액터/HUD 색상 변경과는 별개로, 전용 델리게이트/이벤트로 분기해서 경고 로그와 향후 알림 트리거(Slack/Discord 등)의 기반을 마련.
+
+### Claude 작업
+- `USensorSubsystem`에 `ESensorAlarmSeverity`(Normal/Warning/Critical) enum + `FOnSensorAlarmChanged` 델리게이트 추가
+- 센서별 임계값 테이블(`Thresholds`: temperature 85/100, pressure 45/55)과 `(EquipmentId, SensorKey)` 별 마지막 심각도 상태(`LastSeverityByEquipmentSensor`) 추적
+- `HandleSensorData`에서 심각도가 실제로 바뀔 때만(예: Normal→Warning) `[Alarm]` 로그 출력 + `OnSensorAlarmChanged` 브로드캐스트 — 매 틱마다 스팸 로그가 나지 않도록 상태 전이 시점에만 발화
+- 빌드 검증 완료 (UBT 컴파일 성공)
+- **알려진 중복 이슈 남김**: 이 임계값 테이블(85/100, 45/55)이 `AEquipmentActor`/`USensorHudWidget`가 자체적으로 갖고 있는 `WarningTemperature`/`CriticalTemperature`(85/100)와 별개로 존재 — 지금은 일부러 시각화 코드를 안 건드리고 알람 이벤트 계층만 새로 추가했음. 다음 "구조 개선" 작업 때 하나로 합치는 게 좋음 (TODO 주석으로 남겨둠)
+
+### 본인 작업 (트러블슈팅 포함)
+- **로그 색상 = verbosity라는 것 직접 확인**: Output Log에서 `[Alarm]`이 노란색으로 뜨는 걸 보고 "이게 임계값 넘나드는 거냐"고 확인 질문 → UE_LOG를 항상 `Warning` verbosity로 찍고 있어서 Critical이 와도 색은 항상 노랑이라는 것, 즉 로그 색이 비즈니스 심각도와 무관하다는 걸 스스로 짚어냄
+- **범위 확정 질문**: "임계치 넘으면 근본적으로 뭘 원했던거냐"고 되물어서, 지금 만든 게 배너/알람 히스토리/외부 알림 같은 실제 예외처리가 아니라 이벤트 배관(delegate+로그)뿐이라는 걸 명확히 하고, 지금은 그 이상 필요 없다고 스코프를 직접 확정함
+
+---
