@@ -3,15 +3,15 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "DataSource/ISensorDataSource.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "SensorSubsystem.generated.h"
 
-class ISensorDataSource;
-
 /**
  * Game-instance-level entry point for live sensor data. Owns the current
- * ISensorDataSource (WebSocket today, OPC UA later) and logs every reading.
- * Later slices will fan OnSensorData out to 3D actors / UI instead of just logging.
+ * ISensorDataSource (WebSocket today, OPC UA later), logs every reading, and
+ * re-broadcasts it via OnSensorDataReceived so 3D actors / UI can subscribe
+ * without knowing anything about the underlying transport.
  */
 UCLASS()
 class FACTORYTWIN_API USensorSubsystem : public UGameInstanceSubsystem
@@ -22,8 +22,11 @@ public:
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
 
+	FOnSensorData& OnSensorDataReceived() { return OnSensorDataReceivedDelegate; }
+
 private:
 	void HandleSensorData(FName EquipmentId, FName SensorKey, float Value, FDateTime Timestamp);
 
 	TSharedPtr<ISensorDataSource> SensorDataSource;
+	FOnSensorData OnSensorDataReceivedDelegate;
 };

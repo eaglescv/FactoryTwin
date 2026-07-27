@@ -34,4 +34,6 @@ void USensorSubsystem::HandleSensorData(FName EquipmentId, FName SensorKey, floa
 {
 	UE_LOG(LogTemp, Log, TEXT("[Sensor] %s/%s = %.2f @ %s"),
 		*EquipmentId.ToString(), *SensorKey.ToString(), Value, *Timestamp.ToIso8601());
+
+	OnSensorDataReceivedDelegate.Broadcast(EquipmentId, SensorKey, Value, Timestamp);
 }
