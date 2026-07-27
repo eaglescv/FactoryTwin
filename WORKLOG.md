@@ -141,3 +141,19 @@
 C++ 전용(Blueprint 에셋 없이) UMG 위젯을 만들 때는 **위젯 트리 구성을 `NativeConstruct()`가 아니라 `RebuildWidget()` 오버라이드에서 해야 한다**는 게 핵심 교훈. 이건 UE 공식 문서에서도 그렇게 눈에 띄게 강조되지 않는, 꽤 비직관적인 UMG 라이프사이클 함정이라 흔히 겪는 실수임 — 애초에 Claude가 이 프로젝트의 `SensorHudWidget`을 처음 설계할 때(3D 씬 시각화 다음 슬라이스 진행 시) 이 함정에 걸렸던 것.
 
 ---
+
+## 2026-07-28 — OPC UA 연동 준비 슬라이스
+
+**목표**: 지금 `ISensorDataSource` 인터페이스가 "나중에 OPC UA로 교체 가능"하다고 처음부터 주장해왔는데, 실제로 다른 구현체를 끼워봐서 그게 진짜인지 검증. 실제 OPC UA 클라이언트 라이브러리(예: open62541) 연동은 서버가 없어서 범위 밖 — 대신 인터페이스 스왑 가능성 자체를 증명하는 목업 구현체를 추가.
+
+### Claude 작업
+- `FMockOpcUaSensorSource` 추가 (`DataSource/MockOpcUaSensorSource.h/.cpp`) — `ISensorDataSource` 구현체. 실제 OPC UA 서버에 붙는 대신 내부적으로 온도/압력 값을 랜덤워크하며 자체 생성 (`FTSTicker`로 1초마다). `USensorSubsystem`/`AEquipmentActor`/`USensorHudWidget` 등 소비자 쪽 코드는 전혀 안 건드림 — 그게 이 테스트의 요점
+- `USensorSubsystem`에 `ESensorDataSourceType`(WebSocket/OpcUaMock) config 프로퍼티 추가, `Initialize()`에서 이 값에 따라 `FWebSocketSensorSource` 또는 `FMockOpcUaSensorSource` 중 하나를 생성하도록 분기
+- `Config/DefaultGame.ini`에 `DataSourceType=WebSocket` 기본값 + 주석으로 `OpcUaMock` 전환 방법 문서화 — 코드 수정 없이 ini 한 줄만 바꾸면 시뮬레이터 없이도 파이프라인 전체(액터 색상/HUD/알람) 테스트 가능
+- 빌드 검증 완료 (UBT 컴파일 성공)
+
+### 본인 작업 (트러블슈팅 포함)
+- **인터페이스 스왑 가능성 직접 검증**: `Config/DefaultGame.ini`에서 `DataSourceType=OpcUaMock`으로 직접 바꾸고 파이썬 시뮬레이터 없이 PIE 실행 → 액터/HUD/알람이 전부 정상 동작하는 것을 직접 확인. `ISensorDataSource` 추상화가 "나중에 OPC UA로 교체 가능"하다던 처음 설계 의도가 말뿐이 아니라 실제로 성립한다는 걸 본인이 직접 증명함
+- **`OpcUaMock`을 기본값으로 유지하기로 결정**: 빠른 개발 이터레이션을 위해 매번 시뮬레이터를 켜는 과정을 배제하고 싶다고 판단 → `DataSourceType=OpcUaMock`을 커밋 대상 기본값으로 그대로 두기로 결정 (`WebSocket`으로 되돌릴지 물었을 때 본인이 직접 결정)
+
+---

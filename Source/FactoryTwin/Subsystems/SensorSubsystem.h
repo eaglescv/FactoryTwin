@@ -15,6 +15,15 @@ enum class ESensorAlarmSeverity : uint8
 	Critical
 };
 
+// Which ISensorDataSource implementation USensorSubsystem should construct. OpcUaMock proves the
+// ISensorDataSource abstraction is genuinely swappable ahead of a real OPC UA client existing.
+UENUM(BlueprintType)
+enum class ESensorDataSourceType : uint8
+{
+	WebSocket,
+	OpcUaMock
+};
+
 /**
  * Fired only when a (EquipmentId, SensorKey) pair's severity actually changes
  * (e.g. Normal -> Warning), not on every reading — so this is safe to hook up
@@ -27,7 +36,8 @@ FACTORYTWIN_API FLinearColor GetSensorAlarmSeverityColor(ESensorAlarmSeverity Se
 
 /**
  * Game-instance-level entry point for live sensor data. Owns the current
- * ISensorDataSource (WebSocket today, OPC UA later), logs every reading, and
+ * ISensorDataSource (WebSocket or a mock OPC UA source, selected via
+ * DataSourceType), logs every reading, and
  * re-broadcasts it via OnSensorDataReceived so 3D actors / UI can subscribe
  * without knowing anything about the underlying transport. Also owns the
  * per-sensor alarm thresholds (the single source of truth other classes
@@ -48,8 +58,14 @@ public:
 
 	ESensorAlarmSeverity GetSeverity(FName SensorKey, float Value) const;
 
-	// WebSocket URL for the sensor data source. Set via Config/DefaultGame.ini,
-	// section [/Script/FactoryTwin.SensorSubsystem].
+	// Which ISensorDataSource implementation to construct in Initialize(). Set via
+	// Config/DefaultGame.ini, section [/Script/FactoryTwin.SensorSubsystem].
+	UPROPERTY(Config)
+	ESensorDataSourceType DataSourceType = ESensorDataSourceType::WebSocket;
+
+	// Connection endpoint for the active data source (ws:// URL for WebSocket,
+	// opc.tcp:// URL once a real OPC UA client replaces the mock). Set via
+	// Config/DefaultGame.ini, section [/Script/FactoryTwin.SensorSubsystem].
 	UPROPERTY(Config)
 	FString ServerUrl = TEXT("ws://127.0.0.1:8765");
 

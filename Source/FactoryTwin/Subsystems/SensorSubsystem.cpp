@@ -2,6 +2,7 @@
 
 #include "SensorSubsystem.h"
 
+#include "DataSource/MockOpcUaSensorSource.h"
 #include "DataSource/WebSocketSensorSource.h"
 
 namespace
@@ -52,7 +53,17 @@ void USensorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	Thresholds.Add(TEXT("temperature"), FSensorThresholds{85.0f, 100.0f});
 	Thresholds.Add(TEXT("pressure"), FSensorThresholds{45.0f, 55.0f});
 
-	SensorDataSource = MakeShared<FWebSocketSensorSource>(ServerUrl);
+	switch (DataSourceType)
+	{
+	case ESensorDataSourceType::OpcUaMock:
+		SensorDataSource = MakeShared<FMockOpcUaSensorSource>(ServerUrl);
+		break;
+	case ESensorDataSourceType::WebSocket:
+	default:
+		SensorDataSource = MakeShared<FWebSocketSensorSource>(ServerUrl);
+		break;
+	}
+
 	SensorDataSource->OnSensorData().AddUObject(this, &USensorSubsystem::HandleSensorData);
 	SensorDataSource->Connect();
 }
