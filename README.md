@@ -2,20 +2,33 @@
 
 Unreal Engine 5.7 기반 디지털 트윈 데모. 외부 센서 데이터를 실시간으로 수신해서 3D 씬과 UI에 반영하고, 임계값 초과 시 알람 이벤트를 발생시키는 최소 수직 슬라이스입니다.
 
-## 데이터 흐름
+## 개발 방식
 
-```
-[센서 데이터 소스]                [UE5]
-  Python 시뮬레이터   ──WebSocket──▶  FWebSocketSensorSource
-       또는                              │
-  FMockOpcUaSensorSource(내장 목업)  ─────┤ (ISensorDataSource)
-                                          ▼
-                                   USensorSubsystem
-                                   (로그 + 알람 판정)
-                                     │         │
-                                     ▼         ▼
-                            AEquipmentActor  USensorHudWidget
-                            (3D 큐브/상태등)   (화면 좌상단 텍스트)
+이 프로젝트는 Claude(Anthropic)와의 페어 프로그래밍으로 만들어졌습니다 — 코드 대부분은 Claude가 작성했고, 요구사항 정의·설계 방향 결정·매 단계 검증은 사람이 직접 주도했습니다.
+
+특히 UMG HUD가 화면에 전혀 렌더링되지 않는 버그가 있었는데(`AddToViewport()`는 성공을 보고하는데 실제로는 아무것도 안 보이는 상태), 이건 AI가 처음 설계할 때 만든 버그였습니다. 사람이 가설을 하나씩 세우고(World/GameInstance 문제인지 직접 A/B 테스트) → 레벨 블루프린트로 C++ 코드를 완전히 배제한 대조군을 만들어서(엔진 기본 위젯은 뜨는데 커스텀 위젯만 안 뜨는 것 확인) → 엔진 소스(`UserWidget.cpp`)까지 같이 파고들어서 근본 원인(`RebuildWidget()`이 아니라 `NativeConstruct()`에서 위젯 트리를 만들고 있었던 것)을 찾아냈습니다.
+
+세션별로 "Claude가 한 것"과 "직접 진단·결정·트러블슈팅한 것"을 구분해서 기록한 상세 이력은 [WORKLOG.md](WORKLOG.md)에 있습니다.
+
+## 아키텍처
+
+```mermaid
+flowchart LR
+    Sim["Python 시뮬레이터<br/>(Sim/simulator.py)"] -- WebSocket --> WS
+
+    subgraph DS["ISensorDataSource 구현체"]
+        WS["FWebSocketSensorSource"]
+        Mock["FMockOpcUaSensorSource<br/>(내부 자체 생성, 서버 불필요)"]
+    end
+
+    WS --> Sub
+    Mock --> Sub
+
+    Sub["USensorSubsystem<br/>(로그 · 임계값 판정 · 알람)"]
+
+    Sub -- OnSensorDataReceived --> Actor["AEquipmentActor<br/>3D 큐브 · 상태등 · 텍스트"]
+    Sub -- OnSensorDataReceived --> Hud["USensorHudWidget<br/>화면 HUD"]
+    Sub -- OnSensorAlarmChanged --> Alarm["[Alarm] 로그 (상태 전이 시에만)"]
 ```
 
 `ISensorDataSource` 인터페이스 뒤에 두 가지 구현체가 있습니다:
