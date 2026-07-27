@@ -73,3 +73,9 @@ Plugins/**/Intermediate/*
 
 # Cache files for the editor to use
 DerivedDataCache/*
+
+# Python (Sim/ simulator)
+__pycache__/
+*.pyc
+.venv/
+venv/
