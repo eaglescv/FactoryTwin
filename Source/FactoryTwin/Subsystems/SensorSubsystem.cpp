@@ -6,9 +6,6 @@
 
 namespace
 {
-	// TODO: move to project config (DefaultGame.ini) once we have more than one environment.
-	const TCHAR* GSensorSourceUrl = TEXT("ws://127.0.0.1:8765");
-
 	FName MakeAlarmKey(FName EquipmentId, FName SensorKey)
 	{
 		return FName(*FString::Printf(TEXT("%s/%s"), *EquipmentId.ToString(), *SensorKey.ToString()));
@@ -29,14 +26,33 @@ namespace
 	}
 }
 
+FLinearColor GetSensorAlarmSeverityColor(ESensorAlarmSeverity Severity)
+{
+	switch (Severity)
+	{
+	case ESensorAlarmSeverity::Critical:
+		return FLinearColor::Red;
+	case ESensorAlarmSeverity::Warning:
+		return FLinearColor(1.0f, 0.65f, 0.0f); // amber
+	case ESensorAlarmSeverity::Normal:
+	default:
+		return FLinearColor::Green;
+	}
+}
+
 void USensorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
 
+	if (KnownEquipmentIds.Num() == 0)
+	{
+		KnownEquipmentIds.Add(TEXT("EQ-01"));
+	}
+
 	Thresholds.Add(TEXT("temperature"), FSensorThresholds{85.0f, 100.0f});
 	Thresholds.Add(TEXT("pressure"), FSensorThresholds{45.0f, 55.0f});
 
-	SensorDataSource = MakeShared<FWebSocketSensorSource>(GSensorSourceUrl);
+	SensorDataSource = MakeShared<FWebSocketSensorSource>(ServerUrl);
 	SensorDataSource->OnSensorData().AddUObject(this, &USensorSubsystem::HandleSensorData);
 	SensorDataSource->Connect();
 }
@@ -54,12 +70,14 @@ void USensorSubsystem::Deinitialize()
 
 void USensorSubsystem::HandleSensorData(FName EquipmentId, FName SensorKey, float Value, FDateTime Timestamp)
 {
-	UE_LOG(LogTemp, Log, TEXT("[Sensor] %s/%s = %.2f @ %s"),
+	// Verbose (suppressed by default) so this doesn't drown out the widget/rendering
+	// debug logs while tracking down the HUD-not-rendering issue.
+	UE_LOG(LogTemp, Verbose, TEXT("[Sensor] %s/%s = %.2f @ %s"),
 		*EquipmentId.ToString(), *SensorKey.ToString(), Value, *Timestamp.ToIso8601());
 
 	OnSensorDataReceivedDelegate.Broadcast(EquipmentId, SensorKey, Value, Timestamp);
 
-	const ESensorAlarmSeverity NewSeverity = ComputeSeverity(SensorKey, Value);
+	const ESensorAlarmSeverity NewSeverity = GetSeverity(SensorKey, Value);
 	const FName AlarmKey = MakeAlarmKey(EquipmentId, SensorKey);
 	const ESensorAlarmSeverity OldSeverity = LastSeverityByEquipmentSensor.FindRef(AlarmKey);
 
@@ -74,7 +92,7 @@ void USensorSubsystem::HandleSensorData(FName EquipmentId, FName SensorKey, floa
 	}
 }
 
-ESensorAlarmSeverity USensorSubsystem::ComputeSeverity(FName SensorKey, float Value) const
+ESensorAlarmSeverity USensorSubsystem::GetSeverity(FName SensorKey, float Value) const
 {
 	const FSensorThresholds* SensorThresholds = Thresholds.Find(SensorKey);
 	if (!SensorThresholds)

@@ -65,6 +65,7 @@ bool FWebSocketSensorSource::IsConnected() const
 void FWebSocketSensorSource::HandleConnected()
 {
 	UE_LOG(LogTemp, Log, TEXT("[SensorSource] Connected to %s"), *ServerUrl);
+	CurrentReconnectDelaySeconds = InitialReconnectDelaySeconds;
 }
 
 void FWebSocketSensorSource::HandleConnectionError(const FString& Error)
@@ -118,8 +119,9 @@ void FWebSocketSensorSource::ScheduleReconnect()
 {
 	ClearReconnectTimer();
 
-	// TODO: back off progressively (e.g. 3s/10s/30s) instead of a fixed 3s retry once
-	// this needs to tolerate longer outages of the simulator / future OPC UA bridge.
+	const float Delay = CurrentReconnectDelaySeconds;
+	UE_LOG(LogTemp, Log, TEXT("[SensorSource] Reconnecting to %s in %.1fs"), *ServerUrl, Delay);
+
 	ReconnectTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
 		FTickerDelegate::CreateLambda([this](float /*DeltaTime*/) -> bool
 		{
@@ -127,7 +129,9 @@ void FWebSocketSensorSource::ScheduleReconnect()
 			Connect();
 			return false; // one-shot
 		}),
-		ReconnectDelaySeconds);
+		Delay);
+
+	CurrentReconnectDelaySeconds = FMath::Min(CurrentReconnectDelaySeconds * ReconnectBackoffMultiplier, MaxReconnectDelaySeconds);
 }
 
 void FWebSocketSensorSource::ClearReconnectTimer()

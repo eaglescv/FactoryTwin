@@ -59,6 +59,7 @@ void AEquipmentActor::BeginPlay()
 	{
 		if (USensorSubsystem* SensorSubsystem = GameInstance->GetSubsystem<USensorSubsystem>())
 		{
+			CachedSensorSubsystem = SensorSubsystem;
 			SensorSubsystem->OnSensorDataReceived().AddUObject(this, &AEquipmentActor::HandleSensorData);
 		}
 	}
@@ -68,12 +69,9 @@ void AEquipmentActor::BeginPlay()
 
 void AEquipmentActor::EndPlay(EEndPlayReason::Type EndPlayReason)
 {
-	if (UGameInstance* GameInstance = GetGameInstance())
+	if (USensorSubsystem* SensorSubsystem = CachedSensorSubsystem.Get())
 	{
-		if (USensorSubsystem* SensorSubsystem = GameInstance->GetSubsystem<USensorSubsystem>())
-		{
-			SensorSubsystem->OnSensorDataReceived().RemoveAll(this);
-		}
+		SensorSubsystem->OnSensorDataReceived().RemoveAll(this);
 	}
 
 	Super::EndPlay(EndPlayReason);
@@ -107,19 +105,10 @@ void AEquipmentActor::RefreshVisuals()
 	FLinearColor StatusColor = FLinearColor::Gray;
 	if (LatestTemperature.IsSet())
 	{
-		const float Temperature = LatestTemperature.GetValue();
-		if (Temperature >= CriticalTemperature)
-		{
-			StatusColor = FLinearColor::Red;
-		}
-		else if (Temperature >= WarningTemperature)
-		{
-			StatusColor = FLinearColor(1.0f, 0.65f, 0.0f); // amber
-		}
-		else
-		{
-			StatusColor = FLinearColor::Green;
-		}
+		const ESensorAlarmSeverity Severity = CachedSensorSubsystem.IsValid()
+			? CachedSensorSubsystem->GetSeverity(TEXT("temperature"), LatestTemperature.GetValue())
+			: ESensorAlarmSeverity::Normal;
+		StatusColor = GetSensorAlarmSeverityColor(Severity);
 	}
 	StatusLightComponent->SetLightColor(StatusColor);
 	StatusTextComponent->SetTextRenderColor(StatusColor.ToFColor(true));

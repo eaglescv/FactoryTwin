@@ -11,16 +11,21 @@
 #include "Engine/GameInstance.h"
 #include "Subsystems/SensorSubsystem.h"
 
+TSharedRef<SWidget> USensorHudWidget::RebuildWidget()
+{
+	BuildLayout();
+	return Super::RebuildWidget();
+}
+
 void USensorHudWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
-
-	BuildLayout();
 
 	if (UGameInstance* GameInstance = GetGameInstance())
 	{
 		if (USensorSubsystem* SensorSubsystem = GameInstance->GetSubsystem<USensorSubsystem>())
 		{
+			CachedSensorSubsystem = SensorSubsystem;
 			SensorSubsystem->OnSensorDataReceived().AddUObject(this, &USensorHudWidget::HandleSensorData);
 		}
 	}
@@ -30,12 +35,9 @@ void USensorHudWidget::NativeConstruct()
 
 void USensorHudWidget::NativeDestruct()
 {
-	if (UGameInstance* GameInstance = GetGameInstance())
+	if (USensorSubsystem* SensorSubsystem = CachedSensorSubsystem.Get())
 	{
-		if (USensorSubsystem* SensorSubsystem = GameInstance->GetSubsystem<USensorSubsystem>())
-		{
-			SensorSubsystem->OnSensorDataReceived().RemoveAll(this);
-		}
+		SensorSubsystem->OnSensorDataReceived().RemoveAll(this);
 	}
 
 	Super::NativeDestruct();
@@ -50,7 +52,7 @@ void USensorHudWidget::BuildLayout()
 	if (UCanvasPanelSlot* PanelSlot = RootCanvas->AddChildToCanvas(ReadoutPanel))
 	{
 		PanelSlot->SetAnchors(FAnchors(0.0f, 0.0f));
-		PanelSlot->SetPosition(FVector2D(40.0f, 40.0f));
+		PanelSlot->SetPosition(FVector2D(40.0f, 40.0f + ScreenOffsetY));
 		PanelSlot->SetAutoSize(true);
 	}
 
@@ -107,21 +109,12 @@ void USensorHudWidget::RefreshDisplay()
 	FString TemperatureString = TEXT("--");
 	if (LatestTemperature.IsSet())
 	{
-		const float Temperature = LatestTemperature.GetValue();
-		TemperatureString = FString::Printf(TEXT("%.1f"), Temperature);
+		TemperatureString = FString::Printf(TEXT("%.1f"), LatestTemperature.GetValue());
 
-		if (Temperature >= CriticalTemperature)
-		{
-			StatusColor = FLinearColor::Red;
-		}
-		else if (Temperature >= WarningTemperature)
-		{
-			StatusColor = FLinearColor(1.0f, 0.65f, 0.0f); // amber
-		}
-		else
-		{
-			StatusColor = FLinearColor::Green;
-		}
+		const ESensorAlarmSeverity Severity = CachedSensorSubsystem.IsValid()
+			? CachedSensorSubsystem->GetSeverity(TEXT("temperature"), LatestTemperature.GetValue())
+			: ESensorAlarmSeverity::Normal;
+		StatusColor = GetSensorAlarmSeverityColor(Severity);
 	}
 	TemperatureText->SetText(FText::FromString(FString::Printf(TEXT("Temp: %s"), *TemperatureString)));
 	TemperatureText->SetColorAndOpacity(FSlateColor(StatusColor));

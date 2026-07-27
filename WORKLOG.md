@@ -89,3 +89,55 @@
 - **범위 확정 질문**: "임계치 넘으면 근본적으로 뭘 원했던거냐"고 되물어서, 지금 만든 게 배너/알람 히스토리/외부 알림 같은 실제 예외처리가 아니라 이벤트 배관(delegate+로그)뿐이라는 걸 명확히 하고, 지금은 그 이상 필요 없다고 스코프를 직접 확정함
 
 ---
+
+## 2026-07-27 — 구조 개선 슬라이스
+
+**목표**: 지난 알람 작업에서 남겨둔 TODO(임계값 중복) 정리 + WebSocket URL 하드코딩 제거 + 재연결 고정 딜레이 개선 + 다중 설비 확장 준비.
+
+### Claude 작업
+- **임계값 단일화**: `AEquipmentActor`/`USensorHudWidget`가 각자 갖고 있던 `WarningTemperature`/`CriticalTemperature` UPROPERTY 삭제. 대신 `USensorSubsystem::GetSeverity()`를 조회해서 심각도 판단, `GetSensorAlarmSeverityColor()` 공용 함수로 색상 변환 — 임계값과 색상 매핑이 이제 한 곳(`SensorSubsystem`)에만 존재
+- **설정 분리**: `USensorSubsystem`을 `UCLASS(Config = Game)`로 변경, `ServerUrl`/`KnownEquipmentIds`를 `UPROPERTY(Config)`로 노출. `Config/DefaultGame.ini`에 `[/Script/FactoryTwin.SensorSubsystem]` 섹션 추가 — WebSocket 주소가 더 이상 `.cpp`에 하드코딩되지 않음
+- **재연결 지수 백오프**: `FWebSocketSensorSource`의 고정 3초 재연결을 1초 시작 → 실패마다 2배 → 최대 30초 cap으로 개선, 연결 성공 시 딜레이 리셋
+- **다중 설비 확장 준비**: `UFactoryTwinWorldSubsystem::OnWorldBeginPlay`가 `KnownEquipmentIds` 배열을 순회하며 설비마다 액터(X축 300 간격 배치)와 HUD(세로 90px 간격 스택)를 자동 생성하도록 변경. `DefaultGame.ini`에 `+KnownEquipmentIds=EQ-02` 한 줄만 추가하면 코드 수정 없이 두 번째 설비 등장
+- 빌드 검증 완료 (UBT 컴파일 성공)
+
+- **ini `//` 주석 버그 수정**: PIE 켜니 `[SensorSource] Connection error on ws:: Bad protocol ''`로 재연결 루프에 빠짐 (본인이 PIE로 직접 확인해서 발견). 원인 추적 결과 `Config/DefaultGame.ini`의 `ServerUrl=ws://127.0.0.1:8765`에서 따옴표 없는 `//`를 Unreal ini 파서가 주석 시작으로 해석해 `//` 뒤가 전부 잘려나가 `ws:`만 남은 것 확인 (`ConfigCacheIni.cpp`의 `ShouldExportQuotedString` 주석에 명시된 동작). `ServerUrl="ws://127.0.0.1:8765"`로 따옴표 감싸서 수정
+- **UMG HUD 미표시 버그 수정**: ini 버그 고친 후에도 화면 좌상단 UMG HUD가 안 뜨는 것 확인. 원인은 `UFactoryTwinWorldSubsystem::OnWorldBeginPlay` 시점이 게임 뷰포트 서브시스템이 준비되기 전이라 `AddToViewport()`가 조용히 no-op하고 있던 것 (3D 액터는 뷰포트가 필요 없어서 멀쩡했음). HUD 생성 부분만 `FTSTicker` one-shot 타이머로 한 틱 뒤로 미뤄서 해결 (WebSocket 재연결에 썼던 것과 같은 패턴)
+
+### 본인 작업 (트러블슈팅 포함)
+- **PIE 재검증으로 설정 분리 회귀 발견**: 구조 개선 후 PIE에서 재연결 에러 로그가 반복되는 걸 직접 확인하고 스크린샷으로 공유 → ini `//` 주석 버그 발견/수정으로 이어짐
+- **3D 텍스트와 2D HUD 혼동 질문 → HUD 미표시 버그 발견**: 줌인된 3D 텍스트를 보고 "뭐가 바뀐거야"라고 질문 → 3D 텍스트는 의도대로 동작 중임을 확인하는 과정에서, 원래 있어야 할 좌상단 UMG HUD가 화면 전체 스크린샷에도 전혀 안 보인다는 걸 짚어냄 → 뷰포트 타이밍 버그 발견/수정으로 이어짐
+
+---
+
+## 2026-07-27~28 — UMG HUD 미표시 버그: 근본 원인 추적 (장기 디버깅 세션)
+
+**배경**: "뷰포트 타이밍" 수정(`FTSTicker`로 한 틱 지연) 이후에도 HUD가 여전히 안 보임. `IsInViewport()==true`인데 화면엔 아무것도 안 뜨는 모순적인 상태가 계속됨 — 이번 세션은 이 하나의 버그를 끝까지 추적한 기록. **근본 원인은 Claude의 최초 설계 실수**(아래 결론 참고)였고, 그걸 찾아내는 전체 과정은 거의 전적으로 본인이 직접 주도한 체계적 디버깅이었음.
+
+### 본인 작업 (트러블슈팅 — 이번 라운드의 핵심)
+- **가설을 하나씩 직접 세우고 검증**: "World가 의심된다"며 `CreateWidget(World,...)`를 `CreateWidget(GameInstance,...)`로 직접 바꿔서 A/B 테스트 → Watch 창에서 `GameInstance`가 유효한 포인터임을 확인해 이 가설을 스스로 기각
+- **VS 디버깅 환경을 직접 구축**: `.uproject` 파일 연결이 깨져서 우클릭 메뉴가 없어진 걸 발견 → `UnrealVersionSelector.exe` 위치를 직접 찾아 실행해서 파일 연결 복구 → "Generate Visual Studio project files" 직접 실행
+- **엔진 크래시 대응**: PIE 도중 크래시 발생 → 임시 파일(Binaries/Intermediate/DerivedDataCache) 직접 삭제 → 재구동 중 VS의 "시작 프로젝트가 Class Library"라는 에러를 직접 마주치고 보고
+- **브레이크포인트로 직접 스텝인 시도**: `Hud->AddToViewport()`에 브레이크포인트 걸고, "내 코드만" 옵션도 직접 껐음 → 엔진 심볼 부재로 스텝인이 안 되는 것까지 직접 확인
+- **가장 결정적인 테스트를 스스로 설계·실행**: 레벨 블루프린트를 직접 열어서(메뉴 위치도 직접 찾음) `Event BeginPlay → Create Widget → Add to Viewport`로 C++ 코드를 완전히 배제한 순수 블루프린트 테스트 구성
+  - 1차: 엔진 기본 위젯(`Audio Text Box`)으로 테스트 → **화면에 뜸** (가늘게라도 렌더링 확인)
+  - 2차: `Submix Effect Delay Preset Widget`으로도 테스트 → **역시 뜸**
+  - 3차: `Class`를 `SensorHudWidget`으로 바꿔서 동일한 블루프린트 경로로 테스트 → **안 뜸**
+  - 이 세 가지 비교를 통해 "프로젝트 뷰포트 파이프라인 자체는 정상, `USensorHudWidget` 클래스 자체에 문제가 있다"는 걸 실험적으로 완전히 증명함 — Claude가 엔진 소스를 읽어서 이론적으로 추정만 하던 걸, 실제 A/B 테스트로 확정지은 게 본인임
+- **VS에서 C++ 코드도 직접 수정하며 실험**: `FactoryTwinWorldSubsystem.cpp`의 `OnWorldBeginPlay`를 통째로 주석 처리해서 C++ 경로와 블루프린트 경로가 절대 섞이지 않는 깨끗한 테스트 환경을 스스로 만듦
+- **수정 적용 후 최종 검증**: 마젠타 디버그 박스 + `EQ-01`/`Temp`/`Press` 텍스트가 화면에 정상적으로 뜨는 것을 PIE로 직접 확인
+
+### Claude 작업
+- 최초 `USensorHudWidget` 구현 시 위젯 트리 구성 코드(`BuildLayout()`)를 `NativeConstruct()`에서 호출하도록 설계 — **이게 근본 원인이었음 (Claude의 설계 실수)**
+- 디버깅 과정에서 엔진 소스 분석 지원: `UGameViewportSubsystem::AddToScreen()` 호출 체인 추적(`GameViewportSubsystem.cpp`), `AddViewportWidgetContent()`까지 도달하는 것 확인
+- 여러 단계의 진단용 로그 추가/제거 (`[FactoryTwinWorldSubsystem]`, `[SensorHudWidget]` 태그)
+- 3D 액터/HUD 텍스트를 임시로 주석 처리해서 마젠타 디버그 박스만 남기는 격리 테스트 코드 작성
+- **최종 근본 원인을 엔진 소스에서 직접 확인**: `UserWidget.cpp` 1203번째 줄, `UUserWidget::RebuildWidget()`의 기본 구현이 `WidgetTree->RootWidget`이 null이면 빈 `SSpacer`로 대체(`TakeWidget()`의 스냅샷 시점). `RebuildWidget()`은 `NativeConstruct()`보다 먼저 호출되므로, `NativeConstruct()` 안에서 `WidgetTree->RootWidget`을 채우는 건 이미 스냅샷이 끝난 뒤라 아무 효과가 없었던 것
+- **수정**: `USensorHudWidget::RebuildWidget()`을 오버라이드해서 그 안에서 `BuildLayout()` 호출 후 `Super::RebuildWidget()` 반환하도록 변경. `NativeConstruct()`는 원래 목적(센서 데이터 구독, 초기 표시 갱신)만 담당하도록 정리
+- 디버그 마커(마젠타 박스)와 진단용 로그 제거, `FactoryTwinWorldSubsystem.cpp` 정상 상태로 복원
+- 빌드 검증 완료 (UBT 컴파일 성공)
+
+### 결론 / 교훈
+C++ 전용(Blueprint 에셋 없이) UMG 위젯을 만들 때는 **위젯 트리 구성을 `NativeConstruct()`가 아니라 `RebuildWidget()` 오버라이드에서 해야 한다**는 게 핵심 교훈. 이건 UE 공식 문서에서도 그렇게 눈에 띄게 강조되지 않는, 꽤 비직관적인 UMG 라이프사이클 함정이라 흔히 겪는 실수임 — 애초에 Claude가 이 프로젝트의 `SensorHudWidget`을 처음 설계할 때(3D 씬 시각화 다음 슬라이스 진행 시) 이 함정에 걸렸던 것.
+
+---

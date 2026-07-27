@@ -22,14 +22,19 @@ enum class ESensorAlarmSeverity : uint8
  */
 DECLARE_MULTICAST_DELEGATE_FiveParams(FOnSensorAlarmChanged, FName /*EquipmentId*/, FName /*SensorKey*/, ESensorAlarmSeverity /*NewSeverity*/, ESensorAlarmSeverity /*OldSeverity*/, float /*Value*/);
 
+/** Shared Normal/Warning/Critical -> color mapping so actors, HUD, etc. never redefine it themselves. */
+FACTORYTWIN_API FLinearColor GetSensorAlarmSeverityColor(ESensorAlarmSeverity Severity);
+
 /**
  * Game-instance-level entry point for live sensor data. Owns the current
  * ISensorDataSource (WebSocket today, OPC UA later), logs every reading, and
  * re-broadcasts it via OnSensorDataReceived so 3D actors / UI can subscribe
- * without knowing anything about the underlying transport. Also tracks
- * per-sensor alarm severity and broadcasts OnSensorAlarmChanged on transitions.
+ * without knowing anything about the underlying transport. Also owns the
+ * per-sensor alarm thresholds (the single source of truth other classes
+ * should query via GetSeverity() rather than hardcoding their own copies)
+ * and broadcasts OnSensorAlarmChanged on severity transitions.
  */
-UCLASS()
+UCLASS(Config = Game)
 class FACTORYTWIN_API USensorSubsystem : public UGameInstanceSubsystem
 {
 	GENERATED_BODY()
@@ -41,6 +46,19 @@ public:
 	FOnSensorData& OnSensorDataReceived() { return OnSensorDataReceivedDelegate; }
 	FOnSensorAlarmChanged& OnSensorAlarmChanged() { return OnSensorAlarmChangedDelegate; }
 
+	ESensorAlarmSeverity GetSeverity(FName SensorKey, float Value) const;
+
+	// WebSocket URL for the sensor data source. Set via Config/DefaultGame.ini,
+	// section [/Script/FactoryTwin.SensorSubsystem].
+	UPROPERTY(Config)
+	FString ServerUrl = TEXT("ws://127.0.0.1:8765");
+
+	// Equipment to spawn actors/HUD for at world begin play. Populated from
+	// Config/DefaultGame.ini (+KnownEquipmentIds=... entries); add more there
+	// to bring another piece of equipment online without touching code.
+	UPROPERTY(Config)
+	TArray<FString> KnownEquipmentIds;
+
 private:
 	struct FSensorThresholds
 	{
@@ -49,14 +67,11 @@ private:
 	};
 
 	void HandleSensorData(FName EquipmentId, FName SensorKey, float Value, FDateTime Timestamp);
-	ESensorAlarmSeverity ComputeSeverity(FName SensorKey, float Value) const;
 
 	TSharedPtr<ISensorDataSource> SensorDataSource;
 	FOnSensorData OnSensorDataReceivedDelegate;
 	FOnSensorAlarmChanged OnSensorAlarmChangedDelegate;
 
-	// TODO: consolidate with the WarningTemperature/CriticalTemperature constants duplicated in
-	// AEquipmentActor and USensorHudWidget once there's a shared config source (see WORKLOG structure-cleanup notes).
 	TMap<FName, FSensorThresholds> Thresholds;
 	TMap<FName, ESensorAlarmSeverity> LastSeverityByEquipmentSensor;
 };

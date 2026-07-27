@@ -29,12 +29,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FactoryTwin")
 	FName EquipmentId = TEXT("EQ-01");
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FactoryTwin")
-	float WarningTemperature = 85.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FactoryTwin")
-	float CriticalTemperature = 100.0f;
-
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(EEndPlayReason::Type EndPlayReason) override;
@@ -56,6 +50,9 @@ private:
 	// Press: always neutral white — pressure is informational only, doesn't affect status color.
 	UPROPERTY(VisibleAnywhere, Category = "FactoryTwin")
 	TObjectPtr<UTextRenderComponent> PressureTextComponent;
+
+	UPROPERTY(Transient)
+	TWeakObjectPtr<class USensorSubsystem> CachedSensorSubsystem;
 
 	TOptional<float> LatestTemperature;
 	TOptional<float> LatestPressure;

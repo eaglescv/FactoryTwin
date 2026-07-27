@@ -24,13 +24,16 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FactoryTwin")
 	FName EquipmentId = TEXT("EQ-01");
 
+	// Vertical pixel offset so multiple equipment HUDs can be stacked without overlapping.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FactoryTwin")
-	float WarningTemperature = 85.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FactoryTwin")
-	float CriticalTemperature = 100.0f;
+	float ScreenOffsetY = 0.0f;
 
 protected:
+	// Builds the widget tree here rather than in NativeConstruct(): RebuildWidget() runs
+	// BEFORE NativeConstruct(), and UUserWidget::RebuildWidget() snapshots WidgetTree->RootWidget
+	// into the actual SWidget at that point -- if it's still null (as it would be if we built
+	// the tree in NativeConstruct instead), you silently get an empty SSpacer with no visible content.
+	virtual TSharedRef<SWidget> RebuildWidget() override;
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
 
@@ -47,6 +50,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> PressureText;
+
+	UPROPERTY(Transient)
+	TWeakObjectPtr<class USensorSubsystem> CachedSensorSubsystem;
 
 	TOptional<float> LatestTemperature;
 	TOptional<float> LatestPressure;

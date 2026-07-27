@@ -40,5 +40,10 @@ private:
 	FOnSensorData SensorDataDelegate;
 	FTSTicker::FDelegateHandle ReconnectTickerHandle;
 
-	static constexpr float ReconnectDelaySeconds = 3.0f;
+	// Exponential backoff: starts at InitialReconnectDelaySeconds, doubles on each
+	// consecutive failure up to MaxReconnectDelaySeconds, resets on a successful connect.
+	static constexpr float InitialReconnectDelaySeconds = 1.0f;
+	static constexpr float MaxReconnectDelaySeconds = 30.0f;
+	static constexpr float ReconnectBackoffMultiplier = 2.0f;
+	float CurrentReconnectDelaySeconds = InitialReconnectDelaySeconds;
 };
